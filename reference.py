@@ -1,5 +1,3 @@
-
-
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 import tensorflow as tf

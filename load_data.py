@@ -86,6 +86,7 @@ indexes = main_df.index.unique()
 MAX = max(main_df.groupby(main_df.index).size())
 
 prediction_data = []
+print("entering loop")
 it = 0
 for index in indexes:
     sample_data = []
@@ -106,6 +107,8 @@ for index in indexes:
     # if it > 30:
     #     break
     # it += 1
+print("exiting loop")
+
 prediction_data = np.array(prediction_data)
 
 scaler = MinMaxScaler(feature_range=(0, 1))
@@ -127,5 +130,6 @@ prediction_data[:, :, 1] = y_scaled
 #     plt.plot(x, y, marker="o", zorder=1)
 #     plt.scatter(x[0], y[0], color="purple", zorder=2)
 #     plt.show()
+print("saving file")
 
 np.save('processed_data.npy', prediction_data)
