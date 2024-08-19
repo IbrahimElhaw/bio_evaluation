@@ -9,10 +9,14 @@ from keras.src.layers import LSTM, Dropout, Dense
 from keras.src.losses import SparseCategoricalCrossentropy
 
 # (0:X , 1:Y, 2:gender, 3:hand, 4:finger, 5:language, 6:age, 7:number).
-Y_FEATURE = 4
+Y_FEATURE = 3
+
+random.seed(10)
 
 data = np.load("processed_data.npy")
 print(np.shape(data))
+random.shuffle(data)
+# data = data[:len(data) // 2]
 random.shuffle(data)
 
 # for sample in data[:, :, 0:2]:
@@ -20,6 +24,8 @@ random.shuffle(data)
 #     y = sample[:,1]
 #     plt.plot(x, y, marker="o")
 #     plt.show()
+
+
 
 split_index = int(0.8*len(data))
 train_data = data[:split_index]
@@ -51,14 +57,13 @@ model = Sequential()
 model.add(Input(shape=np.shape(x_train[0])))
 model.add(LSTM(128, return_sequences=True))
 model.add(Dropout(0.2))
-model.add(LSTM(128))
+model.add(LSTM(64))
 model.add(Dropout(0.1))
-model.add(Dense(16, activation='relu'))
+model.add(Dense(32, activation='relu'))
 model.add(Dense(num_classes, activation='softmax'))
 model.compile(optimizer='adam', loss=SparseCategoricalCrossentropy(), metrics=['accuracy'])
 
-
-desired_accuracy = 0.90
+desired_accuracy = 0.99
 
 accuracy_callback = LambdaCallback(
     on_epoch_end=lambda epoch, logs: (
@@ -71,16 +76,16 @@ accuracy_callback = LambdaCallback(
 
 early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
-model.fit(
+history = model.fit(
     x_train,
     y_train,
-    epochs=50,
+    epochs=10,
     batch_size=128,
     validation_data=(x_val, y_val),
     callbacks=[early_stopping, accuracy_callback]
 )
 
+final_val_accuracy = history.history['val_accuracy'][-1] * 100
 current_time = datetime.now().strftime("%H_%M_%S")
-file_name = f"featur{Y_FEATURE}, model_{current_time}.keras"  # Use .keras extension
+file_name = f"feature_{Y_FEATURE}, model_{current_time}_val_acc_{final_val_accuracy:.2f}.keras"
 model.save(file_name)
-
