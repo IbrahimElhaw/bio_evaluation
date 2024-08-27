@@ -1,28 +1,44 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from scipy.interpolate import CubicSpline
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
+from scipy.interpolate import CubicSpline, interp1d
 
 TEST_SAMPLE = 11
 
 
-def interpolate_sample(sample_, n_points):
-    # Interpolate numerical columns
+def interpolate_sample(sample_, n_points, method="cubic"):
+    # Interpolate numerical columns (X, Y, and time)
     x_values = np.arange(len(sample_))
     x_new = np.linspace(0, len(sample_) - 1, n_points)
 
-    # Cubic spline interpolation for 'X' and 'Y'
-    cs_x = CubicSpline(x_values, sample_['X'])
-    cs_y = CubicSpline(x_values, sample_['Y'])
+    if method == "cubic":
+        # Cubic spline interpolation for 'X', 'Y', and 'time'
+        interpolator_x = CubicSpline(x_values, sample_['X'])
+        interpolator_y = CubicSpline(x_values, sample_['Y'])
+        interpolator_time = CubicSpline(x_values, sample_['time'])
+    elif method == "quadratic":
+        # Quadratic interpolation for 'X', 'Y', and 'time'
+        interpolator_x = interp1d(x_values, sample_['X'], kind='quadratic')
+        interpolator_y = interp1d(x_values, sample_['Y'], kind='quadratic')
+        interpolator_time = interp1d(x_values, sample_['time'], kind='quadratic')
+    elif method == "linear":
+        # Linear interpolation for 'X', 'Y', and 'time'
+        interpolator_x = interp1d(x_values, sample_['X'], kind='linear')
+        interpolator_y = interp1d(x_values, sample_['Y'], kind='linear')
+        interpolator_time = interp1d(x_values, sample_['time'], kind='linear')
+    else:
+        raise ValueError("Invalid method. Choose from 'cubic', 'quadratic', or 'linear'.")
 
-    interpolated_X = cs_x(x_new)
-    interpolated_Y = cs_y(x_new)
+    interpolated_X = interpolator_x(x_new)
+    interpolated_Y = interpolator_y(x_new)
+    interpolated_time = interpolator_time(x_new)
 
     # Creating a new DataFrame for the interpolated data
     interpolated_df = pd.DataFrame({
         'X': interpolated_X,
-        'Y': interpolated_Y
+        'Y': interpolated_Y,
+        'time': interpolated_time
     })
 
     # Extend categorical columns
@@ -44,7 +60,6 @@ def rename_columns(df, prefix):
     df.columns = [f'{prefix}_{col}' for col in df.columns]
     return df
 
-
 # Renaming the columns
 df_subject = rename_columns(df_subject, 'subject')
 df_glyph = rename_columns(df_glyph, 'glyph')
@@ -57,7 +72,6 @@ main_df = pd.merge(main_df, df_subject, left_on='glyph_ZSUBJECT', right_on='subj
 
 relevant_data = ["glyph_Z_PK",
                  "stroke_Z_PK",
-                 "touch_ZTIMESTAMP",
                  "touch_ZX",
                  "touch_ZY",
                  "subject_ZHANDEDNESS",
@@ -65,14 +79,16 @@ relevant_data = ["glyph_Z_PK",
                  "subject_ZNATIVELANGUAGE",
                  "glyph_ZFINGER",
                  "glyph_ZCHARACTER",
-                 "subject_ZAGE"]
+                 "subject_ZAGE",
+                 "touch_ZTIMESTAMP"
+                 ]
 
 main_df = main_df[relevant_data]
 main_df.set_index("glyph_Z_PK", inplace=True)
 main_df.sort_values(by=["glyph_Z_PK", "stroke_Z_PK", "touch_ZTIMESTAMP"], inplace=True)
 
-main_df.drop(columns=["stroke_Z_PK", "touch_ZTIMESTAMP"], inplace=True)
-main_df.columns = ["X", "Y", "hand", "gender", "language", "finger", "number", "age"]
+main_df.drop(columns=["stroke_Z_PK"], inplace=True)
+main_df.columns = ["X", "Y", "hand", "gender", "language", "finger", "number", "age", "time"]
 
 main_df['age'] = main_df['age'].apply(lambda x: 0 if x < 16 else 1)
 main_df['hand'] = main_df['hand'].apply(lambda x: 1 if x == 'right' else 0)
@@ -87,11 +103,11 @@ MAX = max(main_df.groupby(main_df.index).size())
 
 prediction_data = []
 print("entering loop")
-it = 0
+# it = 0
 for index in indexes:
     sample_data = []
     sample = main_df.loc[index]
-    interpolated_sample = interpolate_sample(sample, MAX)
+    interpolated_sample = interpolate_sample(sample, MAX, method="cubic")
     for i, row in interpolated_sample.iterrows():
         point_x = row["X"]
         point_y = -row["Y"]  # flip around x-axis to be readable
@@ -101,7 +117,9 @@ for index in indexes:
         point_finger = row["finger"]
         point_language = row["language"]
         point_number = row["number"]
-        point = [point_x, point_y, point_gender, point_hand, point_finger, point_language, point_age, point_number]
+        point_time = row["time"]
+        point = [point_x, point_y, point_gender, point_hand, point_finger, point_language, point_age, point_number,
+                 point_time]
         sample_data.append(point)
     prediction_data.append(sample_data)
     # if it > 30:
@@ -111,7 +129,7 @@ print("exiting loop")
 
 prediction_data = np.array(prediction_data)
 
-scaler = MinMaxScaler(feature_range=(0, 1))
+scaler = StandardScaler()
 
 x_flatten = prediction_data[:, :, 0].flatten().reshape(-1, 1)
 y_flatten = prediction_data[:, :, 1].flatten().reshape(-1, 1)
@@ -124,7 +142,7 @@ y_scaled = scaler.fit_transform(y_flatten).reshape(prediction_data.shape[0], pre
 prediction_data[:, :, 0] = x_scaled
 prediction_data[:, :, 1] = y_scaled
 
-# for sample in prediction_data[:, :, 0:2]:
+# for sample in prediction_data[:, :, 0:TEST_SAMPLE]:
 #     x = sample[:,0]
 #     y = sample[:,1]
 #     plt.plot(x, y, marker="o", zorder=1)
@@ -132,4 +150,4 @@ prediction_data[:, :, 1] = y_scaled
 #     plt.show()
 print("saving file")
 
-np.save('processed_data.npy', prediction_data)
+np.save('processed_data_linear_standard_with_time.npy', prediction_data)
