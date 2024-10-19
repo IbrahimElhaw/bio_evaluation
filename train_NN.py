@@ -1,13 +1,11 @@
 import os
 import random
 from datetime import datetime
-
 import numpy as np
-
 from keras import Sequential, Input
+from keras.src.callbacks import EarlyStopping
 from keras.src.layers import LSTM, Dropout, Dense
 from keras.src.losses import SparseCategoricalCrossentropy
-from matplotlib import pyplot as plt
 
 # (0:X , 1:Y, 2:gender, 3:hand, 4:finger, 5:language, 6:age, 7:number, 8:time).
 
@@ -53,7 +51,7 @@ def calculate_velocity(x_data, time_data, threshold=3):
     return velocities_filtered
 
 
-def save_model(model_, history_, shape_=None):
+def save_model(model_, history_, shape_=None ):
     final_val_accuracy = history_.history['val_accuracy'][-1] * 100
     current_time = datetime.now().strftime("%H_%M_%S")
     folder_path = "loops_run_1"
@@ -62,7 +60,7 @@ def save_model(model_, history_, shape_=None):
         suffix = "_with_V"
     file_name = (
         f"{folder_path}/{final_val_accuracy:.2f}_"
-        f"file_{os.path.splitext(file)[0]}_num_{CURRENT_NUMER}_feature_{Y_FEATURE}_"
+        f"file_{os.path.splitext(file)[0]}_num_{CURRENT_NUMBER}_feature_{Y_FEATURE}_"
         f"{NumberOfDense}D_{NeuronOfDenseCells}Dense_"
         f"{NumberOfLSTM}LSTM_{NeuronOfLSTMCells}LSTM_{EPOCHES}epochs_"
         f"val_acc_{final_val_accuracy:.2f}_{current_time}{suffix}.keras"
@@ -71,39 +69,76 @@ def save_model(model_, history_, shape_=None):
 
 
 if __name__ == '__main__':
+    # define some Constants for training model and wanted features
+    # (0:X , 1:Y, 2:gender, 3:hand, 4:finger, 5:language, 6:age, 7:number, 8:time).
     Y_FEATURE = 2
-    CURRENT_NUMER = 3
+    CURRENT_NUMBER = 6
+    CURRENT_HAND = 1   # 1: right, 0: left
+    CURRENT_FINGER = 1   # 1: index, 0: thumb
     NumberOfDense = 1
     NumberOfLSTM = 2
-    NeuronOfDenseCells = 20
+    NeuronOfDenseCells = 16
     NeuronOfLSTMCells = 64
     EPOCHES = 30
     random.seed(10)
     file = "processed_data_cubic_standard_with_time.npy"
 
+    # load data and filter the number and the hand
     data = np.load(file)
-    mask = np.any(data[:, :, 7] == CURRENT_NUMER, axis=1)
-    data = data[mask]
     random.shuffle(data)
 
+    if CURRENT_NUMBER in range(10):
+        mask = np.any(data[:, :, 7] == CURRENT_NUMBER, axis=1)
+        data = data[mask]
+
+    if CURRENT_HAND in range(2):
+        mask = np.any(data[:, :, 3] == CURRENT_HAND, axis=1)
+        data = data[mask]
     print(data.shape)
 
+    if CURRENT_FINGER in range(2):
+        mask = np.any(data[:, :, 4] == CURRENT_FINGER, axis=1)
+        data = data[mask]
+    print(data.shape)
+
+    ########################################
+    # Ensure that data are balanced
+    y_full = data[:, :, Y_FEATURE]
+    counts = np.bincount(np.array(y_full[:, 0], dtype=int))
+    count_zeros = int(counts[0])
+    count_ones = int(counts[1])
+    print(f"Number of 0s: {count_zeros}")
+    print(f"Number of 1s: {count_ones}")
+
+    min_count = min(count_zeros, count_ones)
+    if min_count == 0:
+        raise ValueError("One of the classes has no samples, data is imbalanced!")
+    else:
+        balanced_indices = np.hstack([
+            np.random.choice(np.where(y_full[:, 0] == 0)[0], min_count, replace=False),
+            np.random.choice(np.where(y_full[:, 0] == 1)[0], min_count, replace=False)
+        ])
+        np.random.shuffle(balanced_indices)
+        data = data[balanced_indices]
+
+    # Recalculate class counts after balancing
+    counts_balanced = np.bincount(np.array(data[:, 0, Y_FEATURE], dtype=int))
+    print(f"Balanced Number of 0s: {counts_balanced[0]}")
+    print(f"Balanced Number of 1s: {counts_balanced[1]}")
+    ########################################
+
+    # split the data to train and validation
     split_index = int(0.8*len(data))
     train_data = data[:split_index]
     val_data = data[split_index:]
 
+    # split features and labels
     x_train = train_data[:, :, 0:2]
     y_train = train_data[:, :, Y_FEATURE]
     x_val = val_data[:, :, 0:2]
     y_val = val_data[:, :, Y_FEATURE]
 
-    angles = np.arctan2(x_train[:, :, 1], x_train[:, :, 0])
-    angles = np.expand_dims(angles, axis=-1)
-    x_train = np.concatenate((x_train, angles), axis=-1)
-    angles = np.arctan2(x_val[:, :, 1], x_val[:, :, 0])
-    angles = np.expand_dims(angles, axis=-1)
-    x_val = np.concatenate((x_val, angles), axis=-1)
-
+    # adding velocity as feature
     time_train = train_data[:, :, 8]  # 8th index for time
     time_val = val_data[:, :, 8]
     velocity_train = calculate_velocity(x_train, time_train)
@@ -111,9 +146,11 @@ if __name__ == '__main__':
     x_train = np.concatenate((x_train, velocity_train), axis=-1)
     x_val = np.concatenate((x_val, velocity_val), axis=-1)
 
+    # correcting the shape of labels
     y_train = np.squeeze(y_train[:, 0])
     y_val = np.squeeze(y_val[:, 0])
 
+    # debugging code
     print(np.shape(x_train))
     print(np.shape(y_train))
     print(np.shape(x_val))
@@ -132,15 +169,18 @@ if __name__ == '__main__':
     #
     # assert 1==2
 
+    # checking if classes ara balanced
     counts = np.bincount(np.array(y_train, dtype=int))
     count_zeros = counts[0]
     count_ones = counts[1]
     print(f"Number of 0s: {count_zeros}")
     print(f"Number of 1s: {count_ones}")
 
+    # extracting the number of classes to dynamically
     num_classes = len(np.unique(y_train))
     print("num of classes ", num_classes)
 
+    # building model
     model = Sequential()
     model.add(Input(shape=np.shape(x_train[0])))
     for i in range(NumberOfLSTM):
@@ -153,6 +193,11 @@ if __name__ == '__main__':
     model.add(Dense(num_classes, activation='softmax'))
     model.compile(optimizer='adam', loss=SparseCategoricalCrossentropy(), metrics=['accuracy'])
 
+    early_stopping = EarlyStopping(
+        monitor='val_accuracy',  # Metric to monitor
+        patience=4,  # Number of epochs with no improvement after which training will be stopped
+        restore_best_weights=True  # Restore the weights of the model from the epoch with the best validation accuracy
+    )
 
     history = model.fit(
         x_train,
@@ -162,4 +207,5 @@ if __name__ == '__main__':
         validation_data=(x_val, y_val),
         # callbacks=[early_stopping, accuracy_callback]
     )
-    save_model(model, history)
+
+    save_model(model, history, x_train.shape)

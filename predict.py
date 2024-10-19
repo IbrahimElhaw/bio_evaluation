@@ -6,7 +6,7 @@ from tensorflow.keras import models
 # (0:X , 1:Y, 2:gender, 3:hand, 4:finger, 5:language, 6:age, 7:number).
 Y_FEATURE = 4
 
-data = np.load("processed_data.npy")
+# data = np.load("processed_data.npy")
 data = np.load("processed_data.npy")
 print(np.shape(data))
 
