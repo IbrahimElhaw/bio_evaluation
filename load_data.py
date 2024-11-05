@@ -95,7 +95,7 @@ main_df.drop(columns=["stroke_Z_PK"], inplace=True)
 main_df.columns = ["X", "Y", "hand", "gender", "language", "finger", "number", "age", "time"]
 
 # coding of categorical data (data embedding to a similar one hot encoding)
-main_df['age'] = main_df['age'].apply(lambda x: 0 if x < 16 else 1)
+main_df['age'] = main_df['age'].apply(lambda x: 0 if x < 30 else 1)
 main_df['hand'] = main_df['hand'].apply(lambda x: 1 if x == 'right' else 0)
 main_df['gender'] = main_df['gender'].apply(lambda x: 1 if x == 'male' else 0)
 main_df['language'] = main_df['language'].apply(lambda x: 0 if x == 'IE' else 1)
@@ -106,7 +106,7 @@ main_df = main_df.drop_duplicates()
 indexes = main_df.index.unique()
 MAX = max(main_df.groupby(main_df.index).size())
 print(MAX)
-
+exit(0)
 # covert into list and interpolate data
 prediction_data = []
 for index in indexes:
@@ -130,7 +130,6 @@ for index in indexes:
     # if it > 30:
     #     break
     # it += 1
-print("exiting loop")
 
 
 # scale data (normalization)
@@ -151,4 +150,5 @@ prediction_data[:, :, 1] = y_scaled
 #     plt.show()
 
 # saving file
-np.save('processed_data_linear_standard_with_time.npy', prediction_data)
+print(np.shape(prediction_data[0]))
+# np.save('processed_data_linear_standard_with_time.npy', prediction_data)
